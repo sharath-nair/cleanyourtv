@@ -144,6 +144,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private RecyclerView grid;
     private FrameLayout root;
     private WallpaperPlayer wallpaperPlayer;
+    private EyesWallpaperView eyesView;
+    private SharinganSound sharinganSound;
     private GlassView glass;
     private View ambient;
     private TextView heroName;
@@ -506,10 +508,56 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         // the theme's background, so launch looks the same.
         getWindow().setBackgroundDrawable(null);
         wallpaperPlayer = new WallpaperPlayer(this, root, cfg);
+        if (getResources().getBoolean(R.bool.glass_sharingan)) {
+            // The activation sound plays whenever focus moves between two things on Home (not on the first focus when
+            // Home comes up, so returning from an app stays silent).
+            root.getViewTreeObserver().addOnGlobalFocusChangeListener((oldFocus, newFocus) -> {
+                if (sharinganSound != null && oldFocus != null && newFocus != null) sharinganSound.play();
+            });
+        }
+        if (getResources().getBoolean(R.bool.eyes_wallpaper)) {
+            // The wallpaper whose eyes follow the focus (see EyesWallpaperView). It is the picture, so the plain
+            // colour under it is overdraw, as it is under a WallpaperPlayer picture.
+            eyesView = new EyesWallpaperView(this, cfg.wallpaperTrueColor);
+            eyesView.setAnimate(cfg.animations && !cfg.reducedMotion);
+            root.addView(eyesView, 0, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            root.setBackground(null);
+            root.getViewTreeObserver().addOnGlobalFocusChangeListener((oldFocus, newFocus) -> {
+                if (newFocus == null || eyesView == null) return;
+                // The top row of buttons: the eyes look up, from the left for the first button to the right for the
+                // last, so each button reads as its own position in the row (see EyesWallpaperView.lookTowards).
+                View topRow = findViewById(R.id.topButtons);
+                if (topRow instanceof ViewGroup && newFocus.getParent() == topRow) {
+                    ViewGroup row = (ViewGroup) topRow;
+                    int shown = 0, index = 0;
+                    for (int i = 0; i < row.getChildCount(); i++) {
+                        View child = row.getChildAt(i);
+                        if (child.getVisibility() != View.VISIBLE || !child.isFocusable()) continue;
+                        if (child == newFocus) index = shown;
+                        shown++;
+                    }
+                    float along = shown > 1 ? index / (float) (shown - 1) : 0.5f;
+                    eyesView.lookTowards(along * 2f - 1f, -1f);
+                    return;
+                }
+                Rect r = new Rect(0, 0, newFocus.getWidth(), newFocus.getHeight());
+                try {
+                    root.offsetDescendantRectToMyCoords(newFocus, r);
+                } catch (IllegalArgumentException notInRoot) {
+                    return;
+                }
+                eyesView.lookAt(r.exactCenterX(), r.exactCenterY());
+            });
+        }
         sky = findViewById(R.id.sky);
         sky.setIntensity(cfg.skyIntensity);
         glass = findViewById(R.id.glass);
         glass.setStyle(cfg.glassStyle);
+        if (getResources().getBoolean(R.bool.glass_sharingan)) {
+            glass.setSharingan(true);
+            if (getResources().getBoolean(R.bool.sharingan_sound)) sharinganSound = new SharinganSound(this, 0.35f);
+        }
         if (festive) glass.setAccent(festival.accentColor());
         ambient = findViewById(R.id.ambient);
         // The glow is one bitmap, so its alpha can be applied while drawing it. Otherwise every frame of
@@ -1378,6 +1426,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         unregisterReceiver(packageReceiver);
         if (openOnStartOnWake) unregisterReceiver(wakeReceiver);
         wallpaperPlayer.close();
+        if (eyesView != null) eyesView.release();
+        if (sharinganSound != null) sharinganSound.release();
         ConnectivityManager cm = getSystemService(ConnectivityManager.class);
         TvInputManager tim = (TvInputManager) getSystemService(TV_INPUT_SERVICE);
         if (tim != null) tim.unregisterCallback(inputCallback);
@@ -1793,6 +1843,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     @Override
     public void onTileFocused(int position, View card) {
+        boolean movedToNewTile = lastFocused != position;
         lastFocused = position;
         lastFocusedKey = adapter.keyAt(position);
         // Focus restored before the first layout (cold start): the tile has no size yet, and the glass
@@ -1828,6 +1879,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         glassCardRect.set(r);
         glassTargetX = x;
         glassTargetY = y;
+        if (movedToNewTile) glass.activate();
         // Cinematic shelf: the highlight glows in the dock app's colour, plain white in the grid (and on the dock with
         // cinematic_white_focus). app_glow: every tile. In a single row every tile is the dock's kind.
         boolean coloured = (appGlow || cinematic && !cinematicWhiteFocus && (singleRow || position < COLUMNS)) && !festive;

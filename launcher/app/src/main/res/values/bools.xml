@@ -4,4 +4,10 @@
     <bool name="rtl_menu_bar">false</bool>
     <!-- Other locales keep the date on one line, ellipsized as before. -->
     <bool name="date_single_line">true</bool>
+    <!-- Itachi wallpaper whose eyes follow the focus (EyesWallpaperView). false: the normal wallpaper rules. -->
+    <bool name="eyes_wallpaper">true</bool>
+    <!-- Sharingan highlight: crimson glass with a three-tomoe emblem that spins in on every move (GlassView). -->
+    <bool name="glass_sharingan">true</bool>
+    <!-- The activation sound that goes with it (res/raw/sharingan_activate.mp3; replace the file to change it). -->
+    <bool name="sharingan_sound">true</bool>
 </resources>
